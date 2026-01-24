@@ -4,6 +4,19 @@ spring:
   main:
     web-application-type: none
     banner-mode: off
+    log-startup-info: false
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      embedding:
+        options:
+          model: text-embedding-3-small
+    vectorstore:
+      pgvector:
+        table-name: policy_chunks
+        dimensions: 1536
+        initialize-schema: true
+        remove-existing-vector-store-table: false
   datasource:
     url: jdbc:postgresql://localhost:5432/insurance_ai
     username: nites
@@ -16,9 +29,3 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
     database-platform: org.hibernate.dialect.PostgreSQLDialect
-
-logging:
-  level:
-    root: ERROR
-  console:
-    stderr: true

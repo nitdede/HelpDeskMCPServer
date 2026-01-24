@@ -1,19 +1,27 @@
 package com.mcp.HelpDeskMCPServer.tools;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.mcp.HelpDeskMCPServer.entity.ClaimDecision;
 import com.mcp.HelpDeskMCPServer.entity.HelpDeskTicket;
 import com.mcp.HelpDeskMCPServer.service.HelpDeskTicketsService;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -21,6 +29,8 @@ public class HelpDeskTools {
 
     private static final Logger logger = LoggerFactory.getLogger(HelpDeskTools.class);
     private final HelpDeskTicketsService helpDeskTicketsService;
+    private final VectorStore vectorStore;
+    private final Executor vectorTaskExecutor;
 
     private final Map<String, String> ragCache = new HashMap<>();
 
@@ -47,26 +57,60 @@ public class HelpDeskTools {
         return helpDeskTicketsService.findAllTickets(userName);
     }
 
-    /*@Tool(name = "readUserPolicy", description = "Read the user's policy document based on policy number and customer ID")
-    public String readUserPolicy(ToolContext toolContext) {
+    @Tool(name = "readUserPolicy", description = "Read the user's policy document based on policy number and customer ID")
+    public String readUserPolicy(@JsonProperty(required = true) @JsonPropertyDescription("The policyNumber to look up") String policyNumber, @JsonProperty(required = true) @JsonPropertyDescription("The userName") String patientName) {
 
-        String policyNumber = (String) toolContext.getContext().get("policyNumber");
-        String patientName = (String) toolContext.getContext().get("userName");
-        String filerStr = "policyNumber == '" + policyNumber + "' && customerId == '" + patientName.toUpperCase() + "'";
+        logger.info("RAG lookup for policyNumber: {} customerId: {}", policyNumber, patientName.toUpperCase());
 
-        if (ragCache.isEmpty() || !ragCache.entrySet().contains(policyNumber)) {
-            if (ragCache.isEmpty() || !ragCache.containsKey(policyNumber)) {
-                SearchRequest request = SearchRequest.builder().query(policyNumber).filterExpression(filerStr).topK(3) // reduce results to speed up similarity search
-                        .build();
+        if (ragCache.isEmpty() || !ragCache.containsKey(policyNumber)) {
+            // Simple search without filter - filter results in-memory instead
+            SearchRequest request = SearchRequest.builder()
+                    .query(policyNumber + " " + patientName.toUpperCase())
+                    .topK(10) // get more results and filter in memory
+                    .build();
 
-                List<Document> matches = runBlockingSimilaritySearch(request, 30);
+            List<Document> matches = runBlockingSimilaritySearch(request, 30);
 
-                String policyText = matches.stream().map(Document::getText).collect(Collectors.joining("\n"));
+            // Filter results in-memory based on metadata
+            List<Document> filtered = matches.stream()
+                    .filter(doc -> {
+                        Map<String, Object> metadata = doc.getMetadata();
+                        if (metadata == null) return false;
 
-                ragCache.put(policyNumber, policyText);
-            }
+                        String docPolicy = (String) metadata.get("policyNumber");
+                        String docCustomer = (String) metadata.get("customerId");
+
+                        return policyNumber.equals(docPolicy) &&
+                                patientName.toUpperCase().equals(docCustomer);
+                    })
+                    .limit(3)
+                    .toList();
+
+            String policyText = filtered.stream()
+                    .map(Document::getText)
+                    .collect(Collectors.joining("\n"));
+
+            ragCache.put(policyNumber, policyText);
         }
 
         return ragCache.get(policyNumber);
-    }*/
+    }
+
+    /**
+     * Run the vector store similarity search on the shared blocking executor with a timeout.
+     * If the search times out, returns an empty list (caller may use cached results as fallback).
+     */
+    private List<Document> runBlockingSimilaritySearch(SearchRequest request, int timeoutSeconds) {
+        CompletableFuture<List<Document>> future = CompletableFuture.supplyAsync(() -> vectorStore.similaritySearch(request), vectorTaskExecutor);
+        try {
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
+        } catch (TimeoutException te) {
+            future.cancel(true);
+            logger.info("Vector similaritySearch timed out after {}s", timeoutSeconds);
+            return List.of();
+        } catch (Exception e) {
+            logger.info("Vector similaritySearch failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
 }
