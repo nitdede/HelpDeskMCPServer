@@ -2,10 +2,13 @@ spring:
   application:
     name: HelpDeskMCPServer
   main:
-    web-application-type: none
     banner-mode: off
     log-startup-info: false
+  profiles:
+    default: local
   ai:
+    mcp:
+      server:
     openai:
       api-key: ${OPENAI_API_KEY}
       embedding:
@@ -17,15 +20,3 @@ spring:
         dimensions: 1536
         initialize-schema: true
         remove-existing-vector-store-table: false
-  datasource:
-    url: jdbc:postgresql://localhost:5432/insurance_ai
-    username: nites
-    password: ""
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-    database-platform: org.hibernate.dialect.PostgreSQLDialect

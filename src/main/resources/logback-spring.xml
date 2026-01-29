@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <springProfile name="docker">
+        <!-- Console appender for Docker logs - ONLY for docker profile -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%thread] %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+
     <!-- File appender for all logs -->
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>/tmp/helpdesk-mcp-server.log</file>
@@ -8,10 +17,21 @@
         </encoder>
     </appender>
 
-    <!-- Root logger - write to FILE only, NO console output -->
-    <root level="INFO">
-        <appender-ref ref="FILE" />
-    </root>
+    <!-- Root logger -->
+    <springProfile name="docker">
+        <!-- Docker: write to both CONSOLE and FILE -->
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+            <appender-ref ref="FILE" />
+        </root>
+    </springProfile>
+    
+    <springProfile name="!docker">
+        <!-- Local/STDIO: write to FILE only (stdout must be clean for MCP JSON messages) -->
+        <root level="INFO">
+            <appender-ref ref="FILE" />
+        </root>
+    </springProfile>
     
     <!-- Reduce noise from Spring and Hibernate -->
     <logger name="org.springframework" level="INFO"/>

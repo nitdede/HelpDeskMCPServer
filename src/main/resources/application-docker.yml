@@ -1,0 +1,22 @@
+spring:
+  ai:
+    mcp:
+      server:
+        protocol: streamable
+        streamable-http:
+          mcp-endpoint: /mcp
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:insurance_ai}
+    username: ${POSTGRES_USER:nites}
+    password: ${POSTGRES_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+server:
+  port: 8082
